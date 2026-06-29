@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from .models import Candle, IndicatorSnapshot, RuleResult, SignalPlan
+from .price_levels import generate_price_levels
 
 
 def _round_price(value: float) -> float:
@@ -98,3 +99,97 @@ def build_signal_plan(
         position_note="No active trade plan. Continue monitoring.",
     )
 
+
+def _wait_plan(note: str, confirmations: list[str], invalidations: list[str] | None = None) -> SignalPlan:
+    return SignalPlan(
+        direction="WAIT",
+        risk_level="medium",
+        entry_range=None,
+        take_profits=[],
+        stop_loss=None,
+        confirmation=confirmations,
+        invalidation=invalidations or ["Current evidence is incomplete"],
+        position_note=note,
+    )
+
+
+def _left_side_short_plan(candles: list[Candle], indicators: IndicatorSnapshot, rule: RuleResult) -> SignalPlan:
+    levels = generate_price_levels(candles, indicators, direction="SHORT")
+    return SignalPlan(
+        direction="SHORT",
+        risk_level="high",
+        entry_range=levels.entry_range,
+        take_profits=levels.take_profits,
+        stop_loss=levels.stop_loss,
+        confirmation=[
+            "Left-side short rule is active",
+            "Wait for top-reversal evidence such as upper shadow, bearish engulfing, or stalling",
+        ],
+        invalidation=[
+            "Price closes and holds above BOLL upper band",
+            "Top-reversal candle is invalidated by a strong bullish close",
+            "Volume expands upward without rejection",
+        ],
+        position_note=(
+            f"Aggressive research plan only; rule score={rule.score}. "
+            "Use very small size only; no automated order execution."
+        ),
+        leverage="Cross (3x)",
+    )
+
+
+def build_dual_signal_plans(
+    candles: list[Candle],
+    indicators: IndicatorSnapshot,
+    rules: list[RuleResult],
+    aggregate_score: float,
+) -> tuple[SignalPlan, SignalPlan]:
+    primary = build_signal_plan(candles, indicators, rules, aggregate_score)
+    rule_by_name = {rule.name: rule for rule in rules}
+    left_short = rule_by_name.get("left_side_short")
+
+    if left_short and left_short.state == "left_side_short_candidate":
+        aggressive = _left_side_short_plan(candles, indicators, left_short)
+    elif primary.direction != "WAIT":
+        aggressive = primary
+    else:
+        aggressive = _wait_plan(
+            note="Aggressive plan is disabled until a directional rule confirms.",
+            confirmations=["Wait for breakout, distribution breakdown, or left-side short evidence"],
+        )
+
+    if primary.direction == "LONG":
+        conservative = _wait_plan(
+            note="Conservative plan waits for pullback confirmation before considering long exposure.",
+            confirmations=[
+                "Price pulls back near MA25 or the breakout area",
+                "Volume contracts and price stabilizes",
+                "No distribution-risk state appears",
+            ],
+            invalidations=[
+                "Price breaks MA25 with expanding volume",
+                "Bearish SMS/BMS appears",
+            ],
+        )
+    elif primary.direction == "SHORT":
+        conservative = _wait_plan(
+            note="Conservative plan waits for right-side breakdown confirmation.",
+            confirmations=[
+                "Price breaks below MA7 or recent support with expanding volume",
+                "Rebound fails below recent resistance",
+            ],
+            invalidations=[
+                "Price reclaims recent resistance",
+                "Bullish SMS/BMS appears",
+            ],
+        )
+    else:
+        conservative = _wait_plan(
+            note="Conservative plan remains on watch until pullback-long or breakdown-short evidence appears.",
+            confirmations=[
+                "For long: pullback near MA25 with volume contraction and stabilization",
+                "For short: volume breakdown below MA7 or recent support",
+            ],
+        )
+
+    return aggressive, conservative

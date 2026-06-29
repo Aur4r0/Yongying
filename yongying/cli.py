@@ -5,6 +5,7 @@ import json
 
 from .market_data import load_candles
 from .signal_engine import analyze_candles
+from .templates.signal_cn import render_signal_cn
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -31,9 +32,8 @@ def main() -> None:
     if args.json:
         print(json.dumps(result.to_dict(), ensure_ascii=False, indent=2))
     else:
-        print(result.memo_cn)
+        print(render_signal_cn(result))
 
 
 if __name__ == "__main__":
     main()
-

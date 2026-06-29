@@ -67,6 +67,7 @@ class SignalPlan:
     invalidation: list[str]
     confirmation: list[str]
     position_note: str
+    leverage: str | None = None
 
 
 @dataclass
@@ -80,7 +81,8 @@ class AnalysisResult:
     indicators: IndicatorSnapshot
     rules: list[RuleResult]
     memo_cn: str
+    aggressive_plan: SignalPlan | None = None
+    conservative_plan: SignalPlan | None = None
 
     def to_dict(self) -> dict[str, Any]:
         return asdict(self)
-

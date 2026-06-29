@@ -13,7 +13,7 @@ This version is intentionally conservative:
 
 ## What It Does
 
-The MVP converts three parts of the strategy document into code:
+The MVP converts the strategy document into deterministic rule modules:
 
 1. Breakout accumulation: range compression, volume expansion, consecutive green
    candles, and upward FVG/imbalance.
@@ -21,12 +21,16 @@ The MVP converts three parts of the strategy document into code:
    position.
 3. SMS/BMS market structure: lower-high/lower-low and higher-low/higher-high
    structure checks.
+4. Left-side short: BOLL upper-band tests, overheated RSI, long upper shadow,
+   bearish engulfing, stalling, and distance from MA25.
+5. Follow-up entries: pullback-long near MA25 and breakdown-short below MA7.
 
 The output includes:
 
 - Structured JSON signal data.
 - Rule scores and evidence.
-- A Chinese strategy memo similar to a trading-desk note.
+- A primary plan plus aggressive/conservative plans.
+- A Chinese signal template similar to the target trading-desk note.
 
 ## Quick Start
 
@@ -39,13 +43,30 @@ pip install -e ".[api,live]"
 Run the offline demo:
 
 ```bash
-python -m yongying.cli --symbol ORDI/USDT --timeframe 15m
+python3 -m yongying.cli --symbol ORDI/USDT --timeframe 15m
+python3 -m yongying.cli --symbol ORDI/USDT --timeframe 15m --json
+```
+
+Run the scanner once, or leave `--iterations 0` running:
+
+```bash
+python3 -m yongying.scanner --symbol ORDI/USDT --timeframe 15m --iterations 1
+python3 -m yongying.scanner --symbol ORDI/USDT --timeframe 15m --iterations 0 --interval 900
+```
+
+Telegram push is optional and sends signal text only. Credentials must come from
+environment variables:
+
+```bash
+export YONGYING_TELEGRAM_BOT_TOKEN="mock-token"
+export YONGYING_TELEGRAM_CHAT_ID="mock-chat"
+python3 -m yongying.scanner --iterations 1 --notify telegram --notify-dry-run
 ```
 
 Run the dependency-free API:
 
 ```bash
-python -m yongying.simple_server --port 8765
+python3 -m yongying.simple_server --port 8765
 ```
 
 Then open:
@@ -75,7 +96,8 @@ http://127.0.0.1:8765/analyze?symbol=ORDI/USDT&timeframe=15m&source=live&exchang
 ## Run Tests
 
 ```bash
-python -m unittest discover -s tests
+PYTHONDONTWRITEBYTECODE=1 python3 -m unittest discover -s tests
+PYTHONDONTWRITEBYTECODE=1 python3 -m compileall yongying tests
 ```
 
 ## Project Layout
@@ -85,20 +107,67 @@ yongying/
   simple_server.py       Dependency-free HTTP API
   api.py                 Optional FastAPI app
   cli.py                 Local command-line runner
+  scanner.py             Closed-candle signal scanner
+  notifier.py            Optional Telegram text push
   market_data.py         Demo/live candle loading
   indicators.py          MA, BOLL, RSI, MACD, ATR
+  patterns.py            Candle pattern detection
+  price_levels.py        Entry, take-profit, and stop-loss levels
   signal_engine.py       Orchestrates all rules
-  risk_policy.py         Converts evidence into a research plan
+  risk_policy.py         Converts evidence into primary/aggressive/conservative plans
   ai_writer.py           Chinese memo renderer
+  templates/
+    signal_cn.py         Target-format Chinese signal renderer
   strategy/
     breakout_accumulation.py
     wash_distribution.py
     market_structure.py
+    left_side_short.py
+    followup_signals.py
 ```
+
+## Current Signal Format
+
+The default CLI output uses the target-format Chinese signal template:
+
+```text
+⚠️ 激进者：左侧轻仓试空（极轻仓）
+
+PAIR $ORDI/USDT
+💎 SHORT（左侧摸顶，极轻仓）
+Cross (3x)
+
+✔️ Entry Target（开仓范围）：
+...
+
+☑️ Take Profits：
+...
+
+❌ STOP LOSS：...
+
+✅ 稳健者：观望，等待确认
+...
+```
+
+`--json` returns the full structured payload, including:
+
+- `plan`: backward-compatible primary plan.
+- `aggressive_plan`: aggressive research plan.
+- `conservative_plan`: conservative watch plan.
+- `rules`: all rule evidence and metrics.
+
+## Current Limits
+
+- No order execution.
+- No key management.
+- Telegram integration only pushes signal text from environment-provided
+  credentials.
+- No guaranteed live-data availability unless `ccxt` is installed and the
+  exchange endpoint is reachable.
+- Signals are research outputs; they need backtesting before production use.
 
 ## Next Step Ideas
 
-- Add real exchange adapters and candle caching.
 - Store signal history in SQLite.
 - Add vectorbt/backtesting validation.
 - Add OpenAI or local LLM as an optional writer after the rule engine has

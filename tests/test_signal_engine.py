@@ -11,7 +11,7 @@ class SignalEngineTests(unittest.TestCase):
         self.assertEqual(result.symbol, "ORDI/USDT")
         self.assertGreaterEqual(result.aggregate_score, 0)
         self.assertLessEqual(result.aggregate_score, 100)
-        self.assertEqual(len(result.rules), 3)
+        self.assertGreaterEqual(len(result.rules), 6)
         self.assertIn("PAIR ORDI/USDT", result.memo_cn)
 
     def test_breakout_rule_present(self):
@@ -19,9 +19,11 @@ class SignalEngineTests(unittest.TestCase):
         result = analyze_candles(candles, symbol="ORDI/USDT", timeframe="15m")
         rules = {rule.name: rule for rule in result.rules}
         self.assertIn("breakout_accumulation", rules)
+        self.assertIn("left_side_short", rules)
+        self.assertIn("pullback_long_signal", rules)
+        self.assertIn("breakdown_short_signal", rules)
         self.assertGreaterEqual(rules["breakout_accumulation"].score, 50)
 
 
 if __name__ == "__main__":
     unittest.main()
-
