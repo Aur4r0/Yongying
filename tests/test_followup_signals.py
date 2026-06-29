@@ -1,10 +1,9 @@
 import unittest
 
 from yongying.models import Candle, IndicatorSnapshot
-from yongying.strategy.followup_signals import (
-    analyze_breakdown_short_signal,
-    analyze_pullback_long_signal,
-)
+from yongying.strategy.breakdown_short import analyze_breakdown_short_signal
+from yongying.strategy.followup_signals import analyze_pullback_long_signal as compat_pullback_long
+from yongying.strategy.pullback_long import analyze_pullback_long_signal
 
 
 def candle(index: int, open_: float, high: float, low: float, close: float, volume: float = 1000) -> Candle:
@@ -45,6 +44,7 @@ class FollowupSignalTests(unittest.TestCase):
         self.assertEqual(result.state, "pullback_long_candidate")
         self.assertGreaterEqual(result.score, 70)
         self.assertTrue(result.metrics["stabilizes"])
+        self.assertTrue(result.metrics["pullback_near_ma25_pattern"])
 
     def test_pullback_long_not_triggered_when_volume_expands(self):
         candles = base_candles()
@@ -59,12 +59,16 @@ class FollowupSignalTests(unittest.TestCase):
         self.assertEqual(result.state, "breakdown_short_candidate")
         self.assertGreaterEqual(result.score, 70)
         self.assertTrue(result.metrics["close_below_ma7"])
+        self.assertTrue(result.metrics["break_below_ma7_pattern"])
 
     def test_breakdown_short_not_triggered_without_volume(self):
         candles = base_candles()
         candles.append(candle(99, 3.29, 3.30, 3.20, 3.22, 800))
         result = analyze_breakdown_short_signal(candles, snapshot(close=3.22))
         self.assertNotEqual(result.state, "breakdown_short_candidate")
+
+    def test_followup_signals_keeps_compat_import(self):
+        self.assertIs(compat_pullback_long, analyze_pullback_long_signal)
 
 
 if __name__ == "__main__":

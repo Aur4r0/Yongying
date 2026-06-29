@@ -234,7 +234,124 @@ def detect_false_breakout_reversal(candles: list[Candle], lookback: int = 20) ->
     )
 
 
-def analyze_patterns(candles: list[Candle], lookback: int = 20) -> dict[str, PatternResult]:
+def detect_pullback_near_ma25(
+    candles: list[Candle],
+    ma25: float | None,
+    atr: float | None = None,
+    lookback: int = 20,
+    max_distance_ratio: float = 0.018,
+) -> PatternResult:
+    if not candles:
+        return PatternResult(name="pullback_near_ma25", matched=False, score=0.0)
+    if ma25 is None or ma25 <= 0:
+        return PatternResult(
+            name="pullback_near_ma25",
+            matched=False,
+            score=0.0,
+            reasons=[],
+            metrics={"ma25": ma25, "available": False},
+        )
+    if len(candles) < lookback + 1:
+        return PatternResult(
+            name="pullback_near_ma25",
+            matched=False,
+            score=0.0,
+            metrics={"ma25": ma25, "available": True, "insufficient_data": True},
+        )
+
+    latest = candles[-1]
+    base = candles[-lookback - 1 : -1]
+    avg_volume = mean(c.volume for c in base)
+    volume_ratio = _safe_div(latest.volume, avg_volume)
+    geometry = candle_geometry(latest)
+    distance_ratio = abs(latest.close - ma25) / ma25
+    touch_buffer = (atr or max(latest.high - latest.low, ma25 * 0.01)) * 0.25
+    touched_ma25 = latest.low <= ma25 + touch_buffer and latest.high >= ma25 - touch_buffer
+    close_near_ma25 = distance_ratio <= max_distance_ratio
+    volume_contracts = volume_ratio <= 0.85
+    stabilizes = latest.close >= latest.open or geometry["lower_shadow_ratio"] >= 0.30
+    matched = (touched_ma25 or close_near_ma25) and volume_contracts and stabilizes
+    reasons = []
+    if matched:
+        reasons.append("Price pulled back near MA25 with contracted volume and stabilization")
+    return PatternResult(
+        name="pullback_near_ma25",
+        matched=matched,
+        score=80.0 if matched else 0.0,
+        reasons=reasons,
+        metrics={
+            "ma25": ma25,
+            "atr": atr,
+            "distance_ratio": round(distance_ratio, 4),
+            "touched_ma25": touched_ma25,
+            "close_near_ma25": close_near_ma25,
+            "volume_ratio": round(volume_ratio, 4),
+            "volume_contracts": volume_contracts,
+            "stabilizes": stabilizes,
+        },
+    )
+
+
+def detect_break_below_ma7(
+    candles: list[Candle],
+    ma7: float | None,
+    lookback: int = 20,
+    min_volume_ratio: float = 1.25,
+) -> PatternResult:
+    if not candles:
+        return PatternResult(name="break_below_ma7", matched=False, score=0.0)
+    if ma7 is None or ma7 <= 0:
+        return PatternResult(
+            name="break_below_ma7",
+            matched=False,
+            score=0.0,
+            reasons=[],
+            metrics={"ma7": ma7, "available": False},
+        )
+    if len(candles) < lookback + 1:
+        return PatternResult(
+            name="break_below_ma7",
+            matched=False,
+            score=0.0,
+            metrics={"ma7": ma7, "available": True, "insufficient_data": True},
+        )
+
+    latest = candles[-1]
+    base = candles[-lookback - 1 : -1]
+    avg_volume = mean(c.volume for c in base)
+    volume_ratio = _safe_div(latest.volume, avg_volume)
+    geometry = candle_geometry(latest)
+    close_below_ma7 = latest.close < ma7
+    bearish_shape = latest.close < latest.open or geometry["close_position"] <= 0.35
+    broke_recent_low = latest.close < _recent_support(base)
+    volume_expands = volume_ratio >= min_volume_ratio
+    matched = close_below_ma7 and volume_expands and bearish_shape
+    reasons = []
+    if matched:
+        reasons.append("Price closed below MA7 with expanded volume and bearish candle behavior")
+    return PatternResult(
+        name="break_below_ma7",
+        matched=matched,
+        score=80.0 if matched else 0.0,
+        reasons=reasons,
+        metrics={
+            "ma7": ma7,
+            "close_below_ma7": close_below_ma7,
+            "volume_ratio": round(volume_ratio, 4),
+            "volume_expands": volume_expands,
+            "bearish_shape": bearish_shape,
+            "broke_recent_low": broke_recent_low,
+        },
+    )
+
+
+def analyze_patterns(
+    candles: list[Candle],
+    lookback: int = 20,
+    ma7: float | None = None,
+    ma25: float | None = None,
+    atr: float | None = None,
+) -> dict[str, PatternResult]:
     if not candles:
         return {}
 
@@ -247,5 +364,7 @@ def analyze_patterns(candles: list[Candle], lookback: int = 20) -> dict[str, Pat
         detect_volume_breakdown(candles, lookback=lookback),
         detect_stalling_small_body(candles, lookback=lookback),
         detect_false_breakout_reversal(candles, lookback=lookback),
+        detect_pullback_near_ma25(candles, ma25=ma25, atr=atr, lookback=lookback),
+        detect_break_below_ma7(candles, ma7=ma7, lookback=lookback),
     ]
     return {result.name: result for result in results}

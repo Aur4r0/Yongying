@@ -44,8 +44,14 @@ def _conservative_title(plan: SignalPlan) -> str:
     if plan.direction == "WAIT":
         return "✅ 稳健者：观望，等待确认"
     if plan.direction == "LONG":
-        return "✅ 稳健者：等待回踩确认后做多"
-    return "✅ 稳健者：等待右侧跌破确认后做空"
+        return "✅ 稳健者：回踩确认做多（轻仓）"
+    return "✅ 稳健者：右侧跌破做空（轻仓）"
+
+
+def _compact_take_profits(plan: SignalPlan) -> str:
+    if not plan.take_profits:
+        return "等待确认"
+    return " / ".join(str(price) for price in plan.take_profits[:5])
 
 
 def render_signal_cn(result: AnalysisResult) -> str:
@@ -83,6 +89,10 @@ def render_signal_cn(result: AnalysisResult) -> str:
             lines.append(f"· {item}")
     else:
         lines.append("· 等待新的结构化信号")
+    if conservative.direction != "WAIT":
+        lines.append(f"· 稳健入场：{_entry(conservative)}")
+        lines.append(f"· 稳健止盈：{_compact_take_profits(conservative)}")
+        lines.append(f"· 稳健止损：{_stop_loss(conservative)}")
     lines.append("")
     lines.append("免责声明：这是项目研发输出，不构成投资建议或自动下单指令。")
     return "\n".join(lines)

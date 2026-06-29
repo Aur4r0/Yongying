@@ -13,12 +13,15 @@
   - `wash_distribution.py`：洗盘 vs 出货识别。
   - `market_structure.py`：SMS/BMS 结构识别。
   - `left_side_short.py`：左侧摸顶试空识别。
-  - `followup_signals.py`：回踩做多和右侧追空识别。
+  - `pullback_long.py`：回踩 MA25 后的稳健做多观察。
+  - `breakdown_short.py`：跌破 MA7 后的右侧追空观察。
+  - `followup_signals.py`：兼容导出层，不放新策略逻辑。
 - `yongying/signal_engine.py`：组合指标、规则、分数和计划。新增策略必须从这里接入。
 - `yongying/risk_policy.py`：把信号转为主计划、激进计划和稳健计划，包括入场区间、止盈、止损和失效条件。
 - `yongying/ai_writer.py`：中文 memo 渲染。不得在这里发明价格或指标。
 - `yongying/templates/signal_cn.py`：目标格式中文信号渲染。只能使用结构化计划字段。
 - `yongying/cli.py`：命令行入口。
+- `yongying/live_feed.py`：K 线轮询与新收盘 candle 判断。测试必须使用 demo/mock loader。
 - `yongying/scanner.py`：常驻扫描器。只分析新收盘 candle，只输出/推送信号文本，不下单。
 - `yongying/notifier.py`：可选推送 adapter。token 只能来自环境变量，测试必须使用 mock transport。
 - `yongying/simple_server.py`：无外部依赖 HTTP API。

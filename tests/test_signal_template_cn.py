@@ -67,6 +67,39 @@ class SignalTemplateCnTests(unittest.TestCase):
         self.assertIn("STOP LOSS：3.45", text)
         self.assertIn("做空信号", text)
 
+    def test_template_renders_active_conservative_plan_levels(self):
+        candles = generate_demo_candles(bars=140)
+        indicators = indicator_snapshot(candles)
+        base = analyze_candles(candles, symbol="ORDI/USDT", timeframe="15m")
+        conservative = SignalPlan(
+            direction="LONG",
+            risk_level="medium",
+            entry_range=(3.25, 3.28),
+            take_profits=[3.34, 3.40],
+            stop_loss=3.18,
+            confirmation=["价格回踩 MA25 附近并缩量企稳"],
+            invalidation=["跌破 MA25 且放量"],
+            position_note="test",
+        )
+        result = AnalysisResult(
+            symbol=base.symbol,
+            timeframe=base.timeframe,
+            source=base.source,
+            last_price=base.last_price,
+            aggregate_score=base.aggregate_score,
+            plan=base.plan,
+            indicators=indicators,
+            rules=base.rules,
+            memo_cn=base.memo_cn,
+            aggressive_plan=base.aggressive_plan,
+            conservative_plan=conservative,
+        )
+        text = render_signal_cn(result)
+        self.assertIn("稳健者：回踩确认做多", text)
+        self.assertIn("稳健入场：3.25 ~ 3.28", text)
+        self.assertIn("稳健止盈：3.34 / 3.4", text)
+        self.assertIn("稳健止损：3.18", text)
+
 
 if __name__ == "__main__":
     unittest.main()

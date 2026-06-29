@@ -138,6 +138,52 @@ def _left_side_short_plan(candles: list[Candle], indicators: IndicatorSnapshot, 
     )
 
 
+def _conservative_followup_plan(
+    candles: list[Candle],
+    indicators: IndicatorSnapshot,
+    rule: RuleResult,
+    direction: str,
+) -> SignalPlan:
+    levels = generate_price_levels(candles, indicators, direction=direction)  # type: ignore[arg-type]
+    if direction == "LONG":
+        return SignalPlan(
+            direction="LONG",
+            risk_level="medium",
+            entry_range=levels.entry_range,
+            take_profits=levels.take_profits,
+            stop_loss=levels.stop_loss,
+            confirmation=rule.reasons
+            or [
+                "Pullback-long rule is active",
+                "Price is near MA25 with volume contraction and stabilization",
+            ],
+            invalidation=[
+                "Price breaks below MA25 with expanding volume",
+                "Bearish SMS/BMS appears after entry",
+                "Distribution-risk state appears",
+            ],
+            position_note="Conservative research plan only; wait for closed-candle confirmation. No automated order execution.",
+        )
+    return SignalPlan(
+        direction="SHORT",
+        risk_level="medium",
+        entry_range=levels.entry_range,
+        take_profits=levels.take_profits,
+        stop_loss=levels.stop_loss,
+        confirmation=rule.reasons
+        or [
+            "Breakdown-short rule is active",
+            "Price breaks below MA7 or recent support with expanded volume",
+        ],
+        invalidation=[
+            "Price reclaims MA7 or recent resistance",
+            "Bullish SMS/BMS appears after entry",
+            "Breakdown volume fails to continue",
+        ],
+        position_note="Conservative research plan only; wait for closed-candle confirmation. No automated order execution.",
+    )
+
+
 def build_dual_signal_plans(
     candles: list[Candle],
     indicators: IndicatorSnapshot,
@@ -147,6 +193,8 @@ def build_dual_signal_plans(
     primary = build_signal_plan(candles, indicators, rules, aggregate_score)
     rule_by_name = {rule.name: rule for rule in rules}
     left_short = rule_by_name.get("left_side_short")
+    pullback_long = rule_by_name.get("pullback_long_signal")
+    breakdown_short = rule_by_name.get("breakdown_short_signal")
 
     if left_short and left_short.state == "left_side_short_candidate":
         aggressive = _left_side_short_plan(candles, indicators, left_short)
@@ -158,7 +206,11 @@ def build_dual_signal_plans(
             confirmations=["Wait for breakout, distribution breakdown, or left-side short evidence"],
         )
 
-    if primary.direction == "LONG":
+    if pullback_long and pullback_long.state == "pullback_long_candidate":
+        conservative = _conservative_followup_plan(candles, indicators, pullback_long, "LONG")
+    elif breakdown_short and breakdown_short.state == "breakdown_short_candidate":
+        conservative = _conservative_followup_plan(candles, indicators, breakdown_short, "SHORT")
+    elif primary.direction == "LONG":
         conservative = _wait_plan(
             note="Conservative plan waits for pullback confirmation before considering long exposure.",
             confirmations=[

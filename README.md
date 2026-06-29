@@ -54,6 +54,9 @@ python3 -m yongying.scanner --symbol ORDI/USDT --timeframe 15m --iterations 1
 python3 -m yongying.scanner --symbol ORDI/USDT --timeframe 15m --iterations 0 --interval 900
 ```
 
+`scanner.py` uses `live_feed.py` to poll candles and analyze only newly closed
+candles. The default `demo` source stays deterministic for tests.
+
 Telegram push is optional and sends signal text only. Credentials must come from
 environment variables:
 
@@ -107,6 +110,7 @@ yongying/
   simple_server.py       Dependency-free HTTP API
   api.py                 Optional FastAPI app
   cli.py                 Local command-line runner
+  live_feed.py           Polling and new closed-candle detection
   scanner.py             Closed-candle signal scanner
   notifier.py            Optional Telegram text push
   market_data.py         Demo/live candle loading
@@ -123,7 +127,9 @@ yongying/
     wash_distribution.py
     market_structure.py
     left_side_short.py
-    followup_signals.py
+    pullback_long.py
+    breakdown_short.py
+    followup_signals.py  Compatibility exports for older imports
 ```
 
 ## Current Signal Format

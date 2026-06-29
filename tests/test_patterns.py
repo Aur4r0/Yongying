@@ -80,6 +80,32 @@ class PatternTests(unittest.TestCase):
         patterns = analyze_patterns(candles)
         self.assertTrue(patterns["false_breakout_reversal"].matched)
 
+    def test_pullback_near_ma25_triggers_with_contracted_volume(self):
+        candles = flat_base(price=10.2)
+        candles.append(candle(99, 10.03, 10.18, 9.98, 10.08, 650))
+        patterns = analyze_patterns(candles, ma25=10.05, atr=0.20)
+        self.assertTrue(patterns["pullback_near_ma25"].matched)
+        self.assertTrue(patterns["pullback_near_ma25"].metrics["volume_contracts"])
+
+    def test_pullback_near_ma25_does_not_trigger_when_far_from_ma25(self):
+        candles = flat_base(price=10.8)
+        candles.append(candle(99, 10.75, 10.9, 10.70, 10.84, 650))
+        patterns = analyze_patterns(candles, ma25=10.05, atr=0.20)
+        self.assertFalse(patterns["pullback_near_ma25"].matched)
+
+    def test_break_below_ma7_triggers_with_volume_expansion(self):
+        candles = flat_base(price=10.2)
+        candles.append(candle(99, 10.08, 10.10, 9.82, 9.90, 1600))
+        patterns = analyze_patterns(candles, ma7=10.05)
+        self.assertTrue(patterns["break_below_ma7"].matched)
+        self.assertTrue(patterns["break_below_ma7"].metrics["close_below_ma7"])
+
+    def test_break_below_ma7_does_not_trigger_without_volume(self):
+        candles = flat_base(price=10.2)
+        candles.append(candle(99, 10.08, 10.10, 9.82, 9.90, 900))
+        patterns = analyze_patterns(candles, ma7=10.05)
+        self.assertFalse(patterns["break_below_ma7"].matched)
+
 
 if __name__ == "__main__":
     unittest.main()

@@ -5,6 +5,7 @@ import time
 from dataclasses import dataclass, field
 from typing import Callable
 
+from .live_feed import LiveFeedState, poll_closed_candles
 from .market_data import load_candles
 from .models import AnalysisResult, Candle
 from .notifier import NotifyResult, send_notification
@@ -20,7 +21,7 @@ Notifier = Callable[[str], NotifyResult]
 
 @dataclass
 class ScannerState:
-    last_closed_timestamp: dict[str, int] = field(default_factory=dict)
+    feed: LiveFeedState = field(default_factory=LiveFeedState)
     emitted_signal_keys: set[str] = field(default_factory=set)
 
 
@@ -35,16 +36,6 @@ class ScanResult:
     text: str | None = None
     analysis: AnalysisResult | None = None
     notify_result: NotifyResult | None = None
-
-
-def _stream_key(symbol: str, timeframe: str) -> str:
-    return f"{symbol}:{timeframe}"
-
-
-def _closed_candles(candles: list[Candle]) -> list[Candle]:
-    if len(candles) <= 1:
-        return candles
-    return candles[:-1]
 
 
 def _active_signal(result: AnalysisResult) -> bool:
@@ -79,24 +70,30 @@ def scan_once(
     renderer: Renderer = render_signal_cn,
     notifier: Notifier | None = None,
 ) -> ScanResult:
-    candles = loader(symbol=symbol, timeframe=timeframe, source=source, limit=limit, exchange=exchange)
-    closed = _closed_candles(candles)
+    feed_result = poll_closed_candles(
+        state.feed,
+        symbol=symbol,
+        timeframe=timeframe,
+        source=source,
+        exchange=exchange,
+        limit=limit,
+        loader=loader,
+    )
+    closed = feed_result.closed_candles
     if len(closed) < 60:
         return ScanResult(symbol=symbol, timeframe=timeframe, analyzed=False, emitted=False, reason="insufficient_closed_candles")
 
-    stream_key = _stream_key(symbol, timeframe)
-    closed_timestamp = closed[-1].timestamp
-    if state.last_closed_timestamp.get(stream_key) == closed_timestamp:
+    closed_timestamp = feed_result.closed_timestamp
+    if not feed_result.is_new_closed_candle:
         return ScanResult(
             symbol=symbol,
             timeframe=timeframe,
             analyzed=False,
             emitted=False,
-            reason="no_new_closed_candle",
+            reason=feed_result.reason,
             closed_timestamp=closed_timestamp,
         )
 
-    state.last_closed_timestamp[stream_key] = closed_timestamp
     analysis = analyzer(closed, symbol, timeframe, source)
     active = _active_signal(analysis)
     if not active and not emit_wait:
