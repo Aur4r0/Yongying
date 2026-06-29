@@ -4,7 +4,8 @@
 
 ## 项目结构
 
-- `yongying/market_data.py`：行情来源。`demo` 必须保持离线、确定性；`live` 只能作为可选 `ccxt` 数据源。
+- `yongying/market_data.py`：行情来源统一入口。`demo` 必须保持离线、确定性；`live` 默认只接公开 K 线 adapter。
+- `yongying/exchanges/binance.py`：Binance U 本位合约 K 线 REST adapter。只允许公开 `/fapi/v1/klines`，不得加入账户、下单、资金或私钥接口。
 - `yongying/indicators.py`：技术指标。核心实现不得依赖 pandas、TA-Lib 或网络。
 - `yongying/patterns.py`：K 线形态识别。只返回结构化 pattern 结果，不做交易决策。
 - `yongying/price_levels.py`：价格位生成。负责 entry、take profits、stop loss 和参考位，不判断是否交易。
@@ -87,7 +88,7 @@ curl -s 'http://127.0.0.1:8765/analyze?symbol=ORDI/USDT&timeframe=15m&source=dem
 - 禁止把 `策略(1).docx`、`.env`、API key、交易所 token、账户信息提交到仓库。
 - 禁止在代码、测试、README 示例中写入真实 Telegram token 或 chat id。
 - 禁止让 `live` 数据成为测试或默认运行的必要条件。
-- 禁止在核心分析链路里做网络请求；网络只能出现在 `market_data.fetch_live_candles` 或明确的新 adapter。
+- 禁止在核心分析链路里做网络请求；网络只能出现在 `market_data.fetch_live_candles` 或 `yongying/exchanges/` 的公开行情 adapter。
 - 禁止为了让测试通过而降低测试断言、删除风险提示或跳过异常路径。
 - 禁止在策略里使用未来数据；任何 rolling/window 计算只能看当前 candle 及之前数据。
 - 禁止输出确定性收益承诺、胜率承诺或“必涨/必跌”措辞。

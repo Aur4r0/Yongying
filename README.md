@@ -7,7 +7,7 @@ This version is intentionally conservative:
 
 - It does not place orders.
 - It can run entirely offline with deterministic demo candles.
-- Live market data is optional through `ccxt`.
+- Live Binance U-margined futures klines are optional through public REST.
 - The core strategy engine uses plain Python so it can be tested without heavy
   dependencies.
 
@@ -90,11 +90,39 @@ Then open:
 http://127.0.0.1:8765/analyze?symbol=ORDI/USDT&timeframe=15m&source=demo
 ```
 
-For live data, install the `live` extra and use:
+For live Binance kline data, use:
 
 ```text
 http://127.0.0.1:8765/analyze?symbol=ORDI/USDT&timeframe=15m&source=live&exchange=binance
 ```
+
+## Market Data
+
+The unified candle loader returns the existing `Candle` model:
+
+```python
+from yongying.market_data import load_candles
+
+demo_candles = load_candles(
+    symbol="ORDI/USDT",
+    timeframe="15m",
+    source="demo",
+    limit=200,
+)
+
+binance_candles = load_candles(
+    symbol="ORDI/USDT",
+    timeframe="15m",
+    source="live",
+    exchange="binance",
+    limit=200,
+)
+```
+
+`source="demo"` is deterministic and offline. `source="live"` with
+`exchange="binance"` calls the public Binance U-margined futures endpoint:
+`https://fapi.binance.com/fapi/v1/klines`. It does not use or store API keys,
+and it does not expose account, order, balance, or funding endpoints.
 
 ## Run Tests
 
@@ -114,6 +142,8 @@ yongying/
   scanner.py             Closed-candle signal scanner
   notifier.py            Optional Telegram text push
   market_data.py         Demo/live candle loading
+  exchanges/
+    binance.py           Binance U-margined futures kline REST adapter
   indicators.py          MA, BOLL, RSI, MACD, ATR
   patterns.py            Candle pattern detection
   price_levels.py        Entry, take-profit, and stop-loss levels
@@ -166,10 +196,11 @@ Cross (3x)
 
 - No order execution.
 - No key management.
+- Binance live data uses public kline REST only; no account or order APIs.
 - Telegram integration only pushes signal text from environment-provided
   credentials.
-- No guaranteed live-data availability unless `ccxt` is installed and the
-  exchange endpoint is reachable.
+- No guaranteed live-data availability when the exchange endpoint is unreachable,
+  rate-limited, or rejects the symbol/timeframe.
 - Signals are research outputs; they need backtesting before production use.
 
 ## Next Step Ideas

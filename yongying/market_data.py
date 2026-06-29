@@ -1,9 +1,9 @@
 from __future__ import annotations
 
 import math
-import os
 from typing import Literal
 
+from .exchanges.binance import fetch_binance_klines
 from .models import Candle
 
 
@@ -75,21 +75,13 @@ def fetch_live_candles(
     timeframe: str = "15m",
     limit: int = 180,
     exchange_id: str | None = None,
+    market: str = "futures",
 ) -> list[Candle]:
-    """Fetch candles through ccxt if available."""
-    exchange_name = exchange_id or os.getenv("YONGYING_DEFAULT_EXCHANGE", "binance")
-    try:
-        import ccxt  # type: ignore
-    except ImportError as exc:
-        raise RuntimeError("Live data requires installing the 'live' extra: pip install -e '.[live]'") from exc
-
-    if not hasattr(ccxt, exchange_name):
-        raise ValueError(f"Unsupported exchange: {exchange_name}")
-
-    exchange_cls = getattr(ccxt, exchange_name)
-    exchange = exchange_cls({"enableRateLimit": True})
-    rows = exchange.fetch_ohlcv(symbol, timeframe=timeframe, limit=limit)
-    return [Candle.from_ohlcv(row) for row in rows]
+    """Fetch live candles through the configured exchange adapter."""
+    exchange_name = (exchange_id or "binance").lower()
+    if exchange_name in {"binance", "binance_futures", "binanceusdm"}:
+        return fetch_binance_klines(symbol=symbol, timeframe=timeframe, limit=limit, market=market)
+    raise ValueError(f"Unsupported live exchange: {exchange_id}. Only binance is implemented.")
 
 
 def load_candles(
@@ -98,9 +90,10 @@ def load_candles(
     source: Source = "demo",
     limit: int = 180,
     exchange: str | None = None,
+    market: str = "futures",
 ) -> list[Candle]:
     if source == "demo":
         return generate_demo_candles(symbol=symbol, bars=limit)
     if source == "live":
-        return fetch_live_candles(symbol=symbol, timeframe=timeframe, limit=limit, exchange_id=exchange)
+        return fetch_live_candles(symbol=symbol, timeframe=timeframe, limit=limit, exchange_id=exchange, market=market)
     raise ValueError(f"Unsupported source: {source}")
