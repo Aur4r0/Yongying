@@ -137,6 +137,38 @@ class ScannerTests(unittest.TestCase):
         self.assertIsNotNone(result.notify_result)
         self.assertTrue(result.notify_result.sent)
 
+    def test_scan_once_does_not_notify_duplicate_signal(self):
+        state = ScannerState()
+        timestamps = [1000, 2000]
+        messages = []
+
+        def loader(**kwargs):
+            return candles_with_closed_timestamp(timestamps.pop(0))
+
+        def notifier(text):
+            messages.append(text)
+            return NotifyResult(provider="telegram", enabled=True, sent=True, reason="sent", status_code=200)
+
+        first = scan_once(
+            state,
+            loader=loader,
+            analyzer=active_analysis,
+            renderer=lambda analysis: "same signal",
+            notifier=notifier,
+        )
+        second = scan_once(
+            state,
+            loader=loader,
+            analyzer=active_analysis,
+            renderer=lambda analysis: "same signal",
+            notifier=notifier,
+        )
+
+        self.assertTrue(first.emitted)
+        self.assertFalse(second.emitted)
+        self.assertEqual(second.reason, "duplicate_signal")
+        self.assertEqual(messages, ["same signal"])
+
     def test_scan_once_records_signal_log_after_analysis(self):
         state = ScannerState()
 

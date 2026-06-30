@@ -77,7 +77,12 @@ environment variables:
 export YONGYING_TELEGRAM_BOT_TOKEN="mock-token"
 export YONGYING_TELEGRAM_CHAT_ID="mock-chat"
 python3 -m yongying.scanner --iterations 1 --notify telegram --notify-dry-run
+python3 scripts/run_okx_scanner.py --iterations 1 --notify telegram --notify-dry-run
 ```
+
+Scanner notification de-duplication is in memory for a running process: the same
+direction, entry, take-profit, and stop-loss key is emitted once. Use
+`--notify-dry-run` to verify Telegram configuration without sending a message.
 
 Run the dependency-free API:
 
