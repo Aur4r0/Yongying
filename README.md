@@ -7,7 +7,8 @@ This version is intentionally conservative:
 
 - It does not place orders.
 - It can run entirely offline with deterministic demo candles.
-- Live Binance U-margined futures klines are optional through public REST.
+- Live Binance U-margined futures and OKX swap klines are optional through
+  public REST.
 - The core strategy engine uses plain Python so it can be tested without heavy
   dependencies.
 
@@ -53,6 +54,7 @@ Run the scanner once, or leave `--iterations 0` running:
 python3 -m yongying.scanner --symbol ORDI/USDT --timeframe 15m --iterations 1
 python3 -m yongying.scanner --symbol ORDI/USDT --timeframe 15m --iterations 0 --interval 900
 python3 -m yongying.scanner --source live --exchange binance --symbol ORDI/USDT --timeframe 15m --cache-path data/klines.sqlite --iterations 0 --interval 60
+python3 -m yongying.scanner --source live --exchange okx --symbol ORDI/USDT --timeframe 15m --cache-path data/okx-klines.sqlite --iterations 0 --interval 60
 ```
 
 `scanner.py` uses `live_feed.py` to poll candles and analyze only newly closed
@@ -100,6 +102,12 @@ For live Binance kline data, use:
 http://127.0.0.1:8765/analyze?symbol=ORDI/USDT&timeframe=15m&source=live&exchange=binance
 ```
 
+For live OKX kline data, use:
+
+```text
+http://127.0.0.1:8765/analyze?symbol=ORDI/USDT&timeframe=15m&source=live&exchange=okx
+```
+
 ## Market Data
 
 The unified candle loader returns the existing `Candle` model:
@@ -121,12 +129,23 @@ binance_candles = load_candles(
     exchange="binance",
     limit=200,
 )
+
+okx_candles = load_candles(
+    symbol="ORDI/USDT",
+    timeframe="15m",
+    source="live",
+    exchange="okx",
+    limit=200,
+)
 ```
 
 `source="demo"` is deterministic and offline. `source="live"` with
 `exchange="binance"` calls the public Binance U-margined futures endpoint:
-`https://fapi.binance.com/fapi/v1/klines`. It does not use or store API keys,
-and it does not expose account, order, balance, or funding endpoints.
+`https://fapi.binance.com/fapi/v1/klines`. `exchange="okx"` calls the public
+OKX candles endpoint: `https://www.okx.com/api/v5/market/candles`; the default
+`market="futures"` maps `ORDI/USDT` to `ORDI-USDT-SWAP`. Live market data does
+not use or store API keys, and it does not expose account, order, balance, or
+funding endpoints.
 
 ### Market Data Cache
 
@@ -183,6 +202,7 @@ yongying/
   kline_cache.py         SQLite kline cache and incremental update helpers
   exchanges/
     binance.py           Binance U-margined futures kline REST adapter
+    okx.py               OKX public swap/spot kline REST adapter
   indicators.py          MA, BOLL, RSI, MACD, ATR
   patterns.py            Candle pattern detection
   price_levels.py        Entry, take-profit, and stop-loss levels

@@ -4,6 +4,7 @@ import math
 from typing import Literal
 
 from .exchanges.binance import fetch_binance_klines
+from .exchanges.okx import fetch_okx_candles
 from .models import Candle
 
 
@@ -90,7 +91,16 @@ def fetch_live_candles(
             start_time=start_time,
             end_time=end_time,
         )
-    raise ValueError(f"Unsupported live exchange: {exchange_id}. Only binance is implemented.")
+    if exchange_name in {"okx", "okex"}:
+        return fetch_okx_candles(
+            symbol=symbol,
+            timeframe=timeframe,
+            limit=limit,
+            market=market,
+            start_time=start_time,
+            end_time=end_time,
+        )
+    raise ValueError(f"Unsupported live exchange: {exchange_id}. Implemented: binance, okx.")
 
 
 def load_candles(
