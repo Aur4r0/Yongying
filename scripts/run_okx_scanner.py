@@ -24,6 +24,7 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--timeframe", default="15m")
     parser.add_argument("--limit", type=int, default=180)
     parser.add_argument("--cache-path", default="data/okx-klines.sqlite")
+    parser.add_argument("--signal-log-path", default="data/okx-signals.sqlite")
     parser.add_argument("--interval", type=float, default=60.0)
     parser.add_argument("--iterations", type=int, default=0, help="Use 0 for an endless loop")
     parser.add_argument("--market", default="futures")
@@ -50,6 +51,7 @@ def _cache_summary(result: ScanResult) -> str:
 def run(argv: Sequence[str] | None = None, scan_once_fn: ScanOnce = scan_once, sleep: Sleeper = time.sleep) -> int:
     args = build_parser().parse_args(argv)
     _ensure_cache_parent(args.cache_path)
+    _ensure_cache_parent(args.signal_log_path)
 
     state = ScannerState()
     notifier = None
@@ -59,6 +61,7 @@ def run(argv: Sequence[str] | None = None, scan_once_fn: ScanOnce = scan_once, s
     print(
         "[okx-scanner] "
         f"symbol={args.symbol} timeframe={args.timeframe} cache={args.cache_path} "
+        f"signal_log={args.signal_log_path} "
         f"interval={args.interval}s iterations={args.iterations or 'endless'}"
     )
 
@@ -73,6 +76,7 @@ def run(argv: Sequence[str] | None = None, scan_once_fn: ScanOnce = scan_once, s
             market=args.market,
             limit=args.limit,
             cache_path=args.cache_path,
+            signal_log_path=args.signal_log_path,
             emit_wait=args.emit_wait,
             notifier=notifier,
         )

@@ -11,6 +11,7 @@ from .live_feed import LiveFeedState, poll_closed_candles
 from .market_data import fetch_live_candles, load_candles
 from .models import AnalysisResult, Candle
 from .notifier import NotifyResult, send_notification
+from .signal_log import SignalLog
 from .signal_engine import analyze_candles
 from .templates.signal_cn import render_signal_cn
 
@@ -40,6 +41,7 @@ class ScanResult:
     analysis: AnalysisResult | None = None
     notify_result: NotifyResult | None = None
     cache_update: CacheUpdateResult | None = None
+    signal_record_id: int | None = None
 
 
 def _active_signal(result: AnalysisResult) -> bool:
@@ -73,6 +75,7 @@ def scan_once(
     loader: Loader = load_candles,
     cache_path: str | Path | None = None,
     cache_fetcher: Fetcher = fetch_live_candles,
+    signal_log_path: str | Path | None = None,
     analyzer: Analyzer = analyze_candles,
     renderer: Renderer = render_signal_cn,
     notifier: Notifier | None = None,
@@ -137,6 +140,18 @@ def scan_once(
         )
 
     analysis = analyzer(closed, symbol, timeframe, source)
+    signal_text = renderer(analysis)
+    signal_record_id = None
+    if signal_log_path is not None:
+        signal_record_id = SignalLog(signal_log_path).save_analysis(
+            analysis,
+            signal_text=signal_text,
+            exchange=exchange or ("binance" if source == "live" else "demo"),
+            market=market,
+            closed_timestamp=closed_timestamp,
+            reason="analyzed",
+        )
+
     active = _active_signal(analysis)
     if not active and not emit_wait:
         return ScanResult(
@@ -148,6 +163,7 @@ def scan_once(
             closed_timestamp=closed_timestamp,
             analysis=analysis,
             cache_update=cache_update,
+            signal_record_id=signal_record_id,
         )
 
     signal_key = _signal_key(analysis)
@@ -161,11 +177,11 @@ def scan_once(
             closed_timestamp=closed_timestamp,
             analysis=analysis,
             cache_update=cache_update,
+            signal_record_id=signal_record_id,
         )
 
     state.emitted_signal_keys.add(signal_key)
-    text = renderer(analysis)
-    notify_result = notifier(text) if notifier else None
+    notify_result = notifier(signal_text) if notifier else None
     return ScanResult(
         symbol=symbol,
         timeframe=timeframe,
@@ -173,10 +189,11 @@ def scan_once(
         emitted=True,
         reason="emitted",
         closed_timestamp=closed_timestamp,
-        text=text,
+        text=signal_text,
         analysis=analysis,
         notify_result=notify_result,
         cache_update=cache_update,
+        signal_record_id=signal_record_id,
     )
 
 
@@ -189,6 +206,7 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--market", default="futures")
     parser.add_argument("--limit", type=int, default=180)
     parser.add_argument("--cache-path", default=None, help="SQLite kline cache path for live scanner runs")
+    parser.add_argument("--signal-log-path", default=None, help="SQLite signal log path for analyzed closed candles")
     parser.add_argument("--interval", type=float, default=900.0)
     parser.add_argument("--iterations", type=int, default=1, help="Use 0 for an endless loop")
     parser.add_argument("--emit-wait", action="store_true")
@@ -215,6 +233,7 @@ def main() -> None:
             market=args.market,
             limit=args.limit,
             cache_path=args.cache_path,
+            signal_log_path=args.signal_log_path,
             emit_wait=args.emit_wait,
             notifier=notifier,
         )

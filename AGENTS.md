@@ -6,6 +6,7 @@
 
 - `yongying/market_data.py`：行情来源统一入口。`demo` 必须保持离线、确定性；`live` 默认只接公开 K 线 adapter。
 - `yongying/kline_cache.py`：SQLite K 线缓存与增量更新。只存公开 OHLCV，不存 API key、账户、订单或资金数据；测试必须使用临时数据库和 mock fetcher。
+- `yongying/signal_log.py`：SQLite signal 记录表。只存 scanner 的研究输出、中文文本和结构化 analysis JSON；不得存 API key、账户、订单、资金或私钥信息。
 - `yongying/exchanges/binance.py`：Binance U 本位合约 K 线 REST adapter。只允许公开 `/fapi/v1/klines`，不得加入账户、下单、资金或私钥接口。
 - `yongying/exchanges/okx.py`：OKX 公开 K 线 REST adapter。只允许公开 `/api/v5/market/candles`，默认 futures/swap 映射到 `*-USDT-SWAP`；不得加入账户、下单、资金或私钥接口。
 - `yongying/indicators.py`：技术指标。核心实现不得依赖 pandas、TA-Lib 或网络。

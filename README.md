@@ -55,6 +55,7 @@ python3 -m yongying.scanner --symbol ORDI/USDT --timeframe 15m --iterations 1
 python3 -m yongying.scanner --symbol ORDI/USDT --timeframe 15m --iterations 0 --interval 900
 python3 -m yongying.scanner --source live --exchange binance --symbol ORDI/USDT --timeframe 15m --cache-path data/klines.sqlite --iterations 0 --interval 60
 python3 -m yongying.scanner --source live --exchange okx --symbol ORDI/USDT --timeframe 15m --cache-path data/okx-klines.sqlite --iterations 0 --interval 60
+python3 -m yongying.scanner --source live --exchange okx --symbol ORDI/USDT --timeframe 15m --cache-path data/okx-klines.sqlite --signal-log-path data/okx-signals.sqlite --iterations 1 --emit-wait
 python3 scripts/run_okx_scanner.py --iterations 1
 ```
 
@@ -65,8 +66,9 @@ SQLite kline cache incrementally, then reads the latest local candles for
 closed-candle analysis.
 
 `scripts/run_okx_scanner.py` is the shorter live-monitoring launcher. It defaults
-to OKX, `ORDI/USDT`, `15m`, `data/okx-klines.sqlite`, `--emit-wait`, and an
-endless loop. Use `--iterations 1` for a one-shot verification.
+to OKX, `ORDI/USDT`, `15m`, `data/okx-klines.sqlite`,
+`data/okx-signals.sqlite`, `--emit-wait`, and an endless loop. Use
+`--iterations 1` for a one-shot verification.
 
 Telegram push is optional and sends signal text only. Credentials must come from
 environment variables:
@@ -199,6 +201,27 @@ possible and returns a continuity report for gaps. Scanner cache mode refreshes
 the latest cached candle as a one-candle overlap, because public REST responses
 can include the still-forming candle whose OHLCV may change before close.
 
+### Signal Log
+
+Use the signal log when a scanner run should keep a local research history:
+
+```bash
+python3 -m yongying.scanner \
+  --source live \
+  --exchange okx \
+  --symbol ORDI/USDT \
+  --timeframe 15m \
+  --cache-path data/okx-klines.sqlite \
+  --signal-log-path data/okx-signals.sqlite \
+  --iterations 1 \
+  --emit-wait
+```
+
+The signal log is SQLite and stores only local research output: direction,
+latest price, score, entry range, take-profits, stop-loss reference, rendered
+Chinese text, and structured analysis JSON. It does not store API keys, account
+data, balances, orders, or funding information.
+
 ## Run Tests
 
 ```bash
@@ -219,6 +242,7 @@ yongying/
   notifier.py            Optional Telegram text push
   market_data.py         Demo/live candle loading
   kline_cache.py         SQLite kline cache and incremental update helpers
+  signal_log.py          SQLite signal history for scanner analysis results
   exchanges/
     binance.py           Binance U-margined futures kline REST adapter
     okx.py               OKX public swap/spot kline REST adapter

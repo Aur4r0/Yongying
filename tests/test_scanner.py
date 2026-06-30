@@ -5,6 +5,7 @@ from pathlib import Path
 from yongying.models import AnalysisResult, Candle, IndicatorSnapshot, SignalPlan
 from yongying.notifier import NotifyResult
 from yongying.scanner import ScannerState, scan_once
+from yongying.signal_log import SignalLog
 
 
 def candle(index: int) -> Candle:
@@ -135,6 +136,35 @@ class ScannerTests(unittest.TestCase):
         self.assertEqual(messages, ["signal text"])
         self.assertIsNotNone(result.notify_result)
         self.assertTrue(result.notify_result.sent)
+
+    def test_scan_once_records_signal_log_after_analysis(self):
+        state = ScannerState()
+
+        def loader(**kwargs):
+            return candles_with_closed_timestamp(1000)
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            signal_log_path = Path(tmpdir) / "signals.sqlite"
+            result = scan_once(
+                state,
+                symbol="ORDI/USDT",
+                timeframe="15m",
+                source="demo",
+                exchange=None,
+                loader=loader,
+                analyzer=active_analysis,
+                renderer=lambda analysis: "signal text",
+                signal_log_path=signal_log_path,
+            )
+            entries = SignalLog(signal_log_path).latest()
+
+        self.assertTrue(result.emitted)
+        self.assertEqual(result.signal_record_id, 1)
+        self.assertEqual(len(entries), 1)
+        self.assertEqual(entries[0].symbol, "ORDI/USDT")
+        self.assertEqual(entries[0].display_direction, "SHORT")
+        self.assertEqual(entries[0].signal_text, "signal text")
+        self.assertEqual(entries[0].closed_timestamp, 1000)
 
     def test_scan_once_updates_live_cache_before_reading_closed_candles(self):
         state = ScannerState()
