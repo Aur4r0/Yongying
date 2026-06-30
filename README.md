@@ -89,6 +89,19 @@ Then open:
 http://127.0.0.1:8765/analyze?symbol=ORDI/USDT&timeframe=15m&source=demo
 ```
 
+Run the local cache dashboard:
+
+```bash
+python3 -m yongying.dashboard --cache-path data/okx-klines.sqlite --port 8766
+```
+
+Then open:
+
+```text
+http://127.0.0.1:8766/
+http://127.0.0.1:8766/api/state
+```
+
 Run the FastAPI version after installing the `api` extra:
 
 ```bash
@@ -199,6 +212,7 @@ PYTHONDONTWRITEBYTECODE=1 python3 -m compileall yongying tests
 yongying/
   simple_server.py       Dependency-free HTTP API
   api.py                 Optional FastAPI app
+  dashboard.py           Local HTML/JSON dashboard for cached klines
   cli.py                 Local command-line runner
   live_feed.py           Polling and new closed-candle detection
   scanner.py             Closed-candle signal scanner
