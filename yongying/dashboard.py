@@ -3,7 +3,9 @@ from __future__ import annotations
 import argparse
 import html
 import json
+import sqlite3
 from dataclasses import dataclass
+from datetime import datetime
 from http import HTTPStatus
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
@@ -21,11 +23,13 @@ from .templates.signal_cn import render_signal_cn
 @dataclass(frozen=True)
 class DashboardConfig:
     cache_path: str
+    signal_log_path: str = "data/okx-signals.sqlite"
     exchange: str = "okx"
     market: str = "futures"
     symbol: str = "ORDI/USDT"
     timeframe: str = "15m"
     limit: int = 180
+    signal_limit: int = 20
 
 
 def _candle_dict(candle: Candle) -> dict[str, float | int]:
@@ -36,6 +40,129 @@ def _candle_dict(candle: Candle) -> dict[str, float | int]:
         "low": candle.low,
         "close": candle.close,
         "volume": candle.volume,
+    }
+
+
+def _loads_json_list(value: str) -> list[Any]:
+    try:
+        parsed = json.loads(value)
+    except (TypeError, json.JSONDecodeError):
+        return []
+    return parsed if isinstance(parsed, list) else []
+
+
+def _loads_json_dict(value: str) -> dict[str, Any]:
+    try:
+        parsed = json.loads(value)
+    except (TypeError, json.JSONDecodeError):
+        return {}
+    return parsed if isinstance(parsed, dict) else {}
+
+
+def _extract_reasons(analysis: dict[str, Any], limit: int = 3) -> list[str]:
+    reasons: list[str] = []
+    rules = analysis.get("rules")
+    if not isinstance(rules, list):
+        return reasons
+    for rule in rules:
+        if not isinstance(rule, dict):
+            continue
+        rule_reasons = rule.get("reasons")
+        if not isinstance(rule_reasons, list):
+            continue
+        for reason in rule_reasons:
+            if isinstance(reason, str) and reason:
+                reasons.append(reason)
+                if len(reasons) >= limit:
+                    return reasons
+    return reasons
+
+
+def _entry_range(low: float | None, high: float | None) -> dict[str, float] | None:
+    if low is None and high is None:
+        return None
+    entry: dict[str, float] = {}
+    if low is not None:
+        entry["low"] = float(low)
+    if high is not None:
+        entry["high"] = float(high)
+    return entry
+
+
+def _signal_row_dict(row: sqlite3.Row) -> dict[str, Any]:
+    analysis = _loads_json_dict(row["analysis_json"])
+    take_profits = [float(item) for item in _loads_json_list(row["take_profits_json"]) if isinstance(item, (int, float))]
+    return {
+        "id": int(row["id"]),
+        "created_at": int(row["created_at"]),
+        "time": datetime.fromtimestamp(int(row["created_at"]) / 1000).strftime("%Y-%m-%d %H:%M:%S"),
+        "exchange": str(row["exchange"]),
+        "market": str(row["market"]),
+        "symbol": str(row["symbol"]),
+        "timeframe": str(row["timeframe"]),
+        "closed_timestamp": row["closed_timestamp"],
+        "direction": str(row["display_direction"]),
+        "price": float(row["last_price"]),
+        "entry": _entry_range(row["entry_low"], row["entry_high"]),
+        "take_profits": take_profits,
+        "stop_loss": row["stop_loss"],
+        "reason": str(row["reason"]),
+        "reasons": _extract_reasons(analysis),
+    }
+
+
+def load_signal_history(config: DashboardConfig) -> dict[str, Any]:
+    path = Path(config.signal_log_path)
+    if not path.exists():
+        return {
+            "status": "missing",
+            "message": f"signal log not found: {path}",
+            "path": str(path),
+            "entries": [],
+        }
+    if config.signal_limit <= 0:
+        return {
+            "status": "error",
+            "message": "signal_limit must be positive",
+            "path": str(path),
+            "entries": [],
+        }
+    try:
+        with sqlite3.connect(path) as conn:
+            conn.row_factory = sqlite3.Row
+            rows = conn.execute(
+                """
+                SELECT
+                    id, created_at, exchange, market, symbol, timeframe,
+                    closed_timestamp, display_direction, last_price,
+                    entry_low, entry_high, take_profits_json, stop_loss,
+                    reason, analysis_json
+                FROM signals
+                WHERE exchange = ? AND market = ? AND symbol = ? AND timeframe = ?
+                ORDER BY id DESC
+                LIMIT ?
+                """,
+                (
+                    config.exchange.strip().upper(),
+                    config.market.strip().upper(),
+                    config.symbol,
+                    config.timeframe,
+                    config.signal_limit,
+                ),
+            ).fetchall()
+    except sqlite3.Error as exc:
+        return {
+            "status": "error",
+            "message": f"signal log unavailable: {exc}",
+            "path": str(path),
+            "entries": [],
+        }
+    entries = [_signal_row_dict(row) for row in rows]
+    return {
+        "status": "ok" if entries else "empty",
+        "message": "ok" if entries else "no signal records",
+        "path": str(path),
+        "entries": entries,
     }
 
 
@@ -53,11 +180,13 @@ def build_dashboard_state(config: DashboardConfig) -> dict[str, Any]:
         "ok": True,
         "version": __version__,
         "cache_path": str(config.cache_path),
+        "signal_log_path": str(config.signal_log_path),
         "exchange": config.exchange,
         "market": config.market,
         "symbol": config.symbol,
         "timeframe": config.timeframe,
         "limit": config.limit,
+        "signal_limit": config.signal_limit,
         "loaded_count": len(candles),
         "closed_count": len(closed),
         "latest_timestamp": candles[-1].timestamp if candles else None,
@@ -65,6 +194,7 @@ def build_dashboard_state(config: DashboardConfig) -> dict[str, Any]:
         "candles": [_candle_dict(candle) for candle in candles],
         "signal_text": None,
         "analysis": None,
+        "signal_history": load_signal_history(config),
         "reason": "insufficient_closed_candles",
     }
     if len(closed) >= 60:
@@ -85,6 +215,7 @@ def render_dashboard_html(state: dict[str, Any]) -> str:
     candles = state["candles"][-80:]
     chart_data = json.dumps(candles, ensure_ascii=False)
     signal_text = state.get("signal_text") or f"等待更多缓存 K 线：{state.get('reason')}"
+    signal_history = state.get("signal_history") or {"entries": [], "status": "missing", "message": "no signal history"}
     analysis = state.get("analysis") or {}
     plan = analysis.get("aggressive_plan") or analysis.get("plan") or {}
     direction = plan.get("direction", "WAIT")
@@ -102,6 +233,59 @@ def render_dashboard_html(state: dict[str, Any]) -> str:
             f"<td>{candle['low']:.4f}</td>"
             f"<td>{candle['close']:.4f}</td>"
             f"<td>{candle['volume']:.2f}</td>"
+            "</tr>"
+        )
+
+    def fmt_optional_price(value: Any) -> str:
+        return f"{float(value):.4f}" if isinstance(value, (int, float)) else "等待确认"
+
+    def fmt_entry(entry: Any) -> str:
+        if not isinstance(entry, dict) or not entry:
+            return "等待确认"
+        low = entry.get("low")
+        high = entry.get("high")
+        if isinstance(low, (int, float)) and isinstance(high, (int, float)):
+            return f"{low:.4f} ~ {high:.4f}"
+        if isinstance(low, (int, float)):
+            return f"{low:.4f}"
+        if isinstance(high, (int, float)):
+            return f"{high:.4f}"
+        return "等待确认"
+
+    def fmt_take_profits(values: Any) -> str:
+        if not isinstance(values, list) or not values:
+            return "等待确认"
+        formatted = [f"{float(value):.4f}" for value in values[:5] if isinstance(value, (int, float))]
+        return " / ".join(formatted) if formatted else "等待确认"
+
+    history_entries = signal_history.get("entries") if isinstance(signal_history, dict) else []
+    history_rows: list[str] = []
+    if isinstance(history_entries, list):
+        for entry in history_entries:
+            if not isinstance(entry, dict):
+                continue
+            reasons = entry.get("reasons")
+            reason_items = "；".join(str(item) for item in reasons[:3]) if isinstance(reasons, list) and reasons else ""
+            reason_text = str(entry.get("reason") or "")
+            if reason_items:
+                reason_text = f"{reason_text}：{reason_items}" if reason_text else reason_items
+            history_rows.append(
+                "<tr>"
+                f"<td>{html.escape(str(entry.get('time') or entry.get('created_at') or ''))}</td>"
+                f"<td>{html.escape(str(entry.get('direction') or 'WAIT'))}</td>"
+                f"<td>{html.escape(fmt_optional_price(entry.get('price')))}</td>"
+                f"<td>{html.escape(fmt_entry(entry.get('entry')))}</td>"
+                f"<td>{html.escape(fmt_take_profits(entry.get('take_profits')))}</td>"
+                f"<td>{html.escape(fmt_optional_price(entry.get('stop_loss')))}</td>"
+                f"<td>{html.escape(reason_text or '无额外原因')}</td>"
+                "</tr>"
+            )
+    history_status = str(signal_history.get("status", "missing")) if isinstance(signal_history, dict) else "missing"
+    history_message = str(signal_history.get("message", "no signal history")) if isinstance(signal_history, dict) else "no signal history"
+    if not history_rows:
+        history_rows.append(
+            "<tr>"
+            f"<td colspan=\"7\">暂无最近信号记录：{html.escape(history_message)}</td>"
             "</tr>"
         )
 
@@ -149,6 +333,9 @@ def render_dashboard_html(state: dict[str, Any]) -> str:
     th, td {{ border-bottom: 1px solid var(--line); padding: 8px; text-align: right; white-space: nowrap; }}
     th:first-child, td:first-child {{ text-align: left; }}
     th {{ color: var(--muted); background: #f8fafc; }}
+    .history {{ margin-top: 14px; }}
+    .history td:last-child, .history th:last-child {{ text-align: left; white-space: normal; min-width: 220px; }}
+    .history-meta {{ color: var(--muted); font-size: 13px; }}
     code {{ background: #eef2f7; border-radius: 5px; padding: 2px 5px; }}
     @media (max-width: 900px) {{ .grid, .layout {{ grid-template-columns: 1fr; }} header {{ align-items: flex-start; flex-direction: column; }} }}
   </style>
@@ -181,6 +368,24 @@ def render_dashboard_html(state: dict[str, Any]) -> str:
         <h2>当前信号</h2>
         <pre>{html.escape(str(signal_text))}</pre>
       </aside>
+    </section>
+    <section class="panel history">
+      <h2>最近信号记录</h2>
+      <p class="history-meta">读取 {html.escape(str(state.get("signal_log_path")))}，状态：{html.escape(history_status)}</p>
+      <table>
+        <thead>
+          <tr>
+            <th>时间</th>
+            <th>方向</th>
+            <th>价格</th>
+            <th>Entry</th>
+            <th>TP</th>
+            <th>SL</th>
+            <th>Reason / Reasons</th>
+          </tr>
+        </thead>
+        <tbody>{''.join(history_rows)}</tbody>
+      </table>
     </section>
   </main>
   <script>
@@ -282,11 +487,13 @@ class DashboardHandler(BaseHTTPRequestHandler):
         base = self.server.config  # type: ignore[attr-defined]
         return DashboardConfig(
             cache_path=_first(params, "cache_path", base.cache_path),
+            signal_log_path=_first(params, "signal_log_path", base.signal_log_path),
             exchange=_first(params, "exchange", base.exchange),
             market=_first(params, "market", base.market),
             symbol=_first(params, "symbol", base.symbol),
             timeframe=_first(params, "timeframe", base.timeframe),
             limit=int(_first(params, "limit", str(base.limit))),
+            signal_limit=int(_first(params, "signal_limit", str(base.signal_limit))),
         )
 
     def _send_json(self, payload: dict[str, Any], status: int = HTTPStatus.OK) -> None:
@@ -318,11 +525,13 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--host", default="127.0.0.1")
     parser.add_argument("--port", type=int, default=8766)
     parser.add_argument("--cache-path", default="data/okx-klines.sqlite")
+    parser.add_argument("--signal-log-path", default="data/okx-signals.sqlite")
     parser.add_argument("--exchange", default="okx")
     parser.add_argument("--market", default="futures")
     parser.add_argument("--symbol", default="ORDI/USDT")
     parser.add_argument("--timeframe", default="15m")
     parser.add_argument("--limit", type=int, default=180)
+    parser.add_argument("--signal-limit", type=int, default=20)
     return parser
 
 
@@ -331,15 +540,18 @@ def main() -> None:
     Path(args.cache_path).expanduser().parent.mkdir(parents=True, exist_ok=True)
     config = DashboardConfig(
         cache_path=args.cache_path,
+        signal_log_path=args.signal_log_path,
         exchange=args.exchange,
         market=args.market,
         symbol=args.symbol,
         timeframe=args.timeframe,
         limit=args.limit,
+        signal_limit=args.signal_limit,
     )
     server = DashboardServer((args.host, args.port), config)
     print(f"Yongying dashboard listening on http://{args.host}:{args.port}")
     print(f"Reading cache: {args.cache_path}")
+    print(f"Reading signal log: {args.signal_log_path}")
     try:
         server.serve_forever()
     except KeyboardInterrupt:
