@@ -55,6 +55,7 @@ python3 -m yongying.scanner --symbol ORDI/USDT --timeframe 15m --iterations 1
 python3 -m yongying.scanner --symbol ORDI/USDT --timeframe 15m --iterations 0 --interval 900
 python3 -m yongying.scanner --source live --exchange binance --symbol ORDI/USDT --timeframe 15m --cache-path data/klines.sqlite --iterations 0 --interval 60
 python3 -m yongying.scanner --source live --exchange okx --symbol ORDI/USDT --timeframe 15m --cache-path data/okx-klines.sqlite --iterations 0 --interval 60
+python3 scripts/run_okx_scanner.py --iterations 1
 ```
 
 `scanner.py` uses `live_feed.py` to poll candles and analyze only newly closed
@@ -62,6 +63,10 @@ candles. The default `demo` source stays deterministic for tests. When
 `--cache-path` is provided with `--source live`, the scanner first updates the
 SQLite kline cache incrementally, then reads the latest local candles for
 closed-candle analysis.
+
+`scripts/run_okx_scanner.py` is the shorter live-monitoring launcher. It defaults
+to OKX, `ORDI/USDT`, `15m`, `data/okx-klines.sqlite`, `--emit-wait`, and an
+endless loop. Use `--iterations 1` for a one-shot verification.
 
 Telegram push is optional and sends signal text only. Credentials must come from
 environment variables:
@@ -219,6 +224,11 @@ yongying/
     pullback_long.py
     breakdown_short.py
     followup_signals.py  Compatibility exports for older imports
+scripts/
+  run_demo.py            CLI demo wrapper
+  run_okx_scanner.py     OKX live scanner launcher with SQLite cache defaults
+reports/
+  test_visualization.html Static visual verification snapshot
 ```
 
 ## Current Signal Format

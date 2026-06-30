@@ -29,6 +29,7 @@
 - `yongying/notifier.py`：可选推送 adapter。token 只能来自环境变量，测试必须使用 mock transport。
 - `yongying/simple_server.py`：无外部依赖 HTTP API。
 - `yongying/api.py`：可选 FastAPI API。
+- `scripts/run_okx_scanner.py`：OKX 实时监控启动脚本。默认只能调用公开 K 线、SQLite 缓存和 scanner，不得加入账户、下单、资金或 API key 逻辑。
 - `tests/`：标准库 `unittest` 测试。
 - `prompts/`：未来 LLM 写作提示词。
 - `策略(1).docx`：本地原始策略资料，默认不得提交到 GitHub。
