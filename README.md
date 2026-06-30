@@ -52,10 +52,14 @@ Run the scanner once, or leave `--iterations 0` running:
 ```bash
 python3 -m yongying.scanner --symbol ORDI/USDT --timeframe 15m --iterations 1
 python3 -m yongying.scanner --symbol ORDI/USDT --timeframe 15m --iterations 0 --interval 900
+python3 -m yongying.scanner --source live --exchange binance --symbol ORDI/USDT --timeframe 15m --cache-path data/klines.sqlite --iterations 0 --interval 60
 ```
 
 `scanner.py` uses `live_feed.py` to poll candles and analyze only newly closed
-candles. The default `demo` source stays deterministic for tests.
+candles. The default `demo` source stays deterministic for tests. When
+`--cache-path` is provided with `--source live`, the scanner first updates the
+SQLite kline cache incrementally, then reads the latest local candles for
+closed-candle analysis.
 
 Telegram push is optional and sends signal text only. Credentials must come from
 environment variables:
@@ -154,7 +158,9 @@ cached_candles = cache.load_candles(
 Rows are keyed by `exchange + market + symbol + timeframe + timestamp`, so
 duplicate candles are replaced rather than appended. `update_cached_candles`
 passes `start_time` after the latest cached timestamp to the fetcher when
-possible and returns a continuity report for gaps.
+possible and returns a continuity report for gaps. Scanner cache mode refreshes
+the latest cached candle as a one-candle overlap, because public REST responses
+can include the still-forming candle whose OHLCV may change before close.
 
 ## Run Tests
 

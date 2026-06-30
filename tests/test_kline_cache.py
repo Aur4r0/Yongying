@@ -98,6 +98,34 @@ class KlineCacheTests(unittest.TestCase):
         self.assertIsNone(result.latest_before)
         self.assertEqual(result.latest_after, candle(1).timestamp)
 
+    def test_update_cached_candles_can_refresh_latest_cached_candle(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            cache_path = Path(tmpdir) / "klines.sqlite"
+            cache = KlineCache(cache_path)
+            cache.save_candles("binance", "futures", "ORDI/USDT", "1m", [candle(0), candle(1)])
+            calls = []
+            replacement = Candle(candle(1).timestamp, 3.5, 3.6, 3.4, 3.55, 2000)
+
+            def fetcher(**kwargs):
+                calls.append(kwargs)
+                return [replacement, candle(2)]
+
+            result = update_cached_candles(
+                cache_path=cache_path,
+                exchange="binance",
+                market="futures",
+                symbol="ORDI/USDT",
+                timeframe="1m",
+                fetcher=fetcher,
+                refresh_latest=True,
+            )
+            loaded = cache.load_candles("binance", "futures", "ORDI/USDT", "1m")
+
+        self.assertEqual(calls[0]["start_time"], candle(1).timestamp)
+        self.assertEqual(result.stored_count, 2)
+        self.assertEqual(len(loaded), 3)
+        self.assertEqual(loaded[1].close, replacement.close)
+
 
 if __name__ == "__main__":
     unittest.main()

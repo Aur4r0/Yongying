@@ -242,12 +242,15 @@ def update_cached_candles(
     timeframe: str,
     limit: int = 200,
     fetcher: Fetcher | None = None,
+    refresh_latest: bool = False,
 ) -> CacheUpdateResult:
     cache = KlineCache(cache_path)
     latest_before = cache.latest_timestamp(exchange, market, symbol, timeframe)
     start_time = None
     if latest_before is not None:
-        start_time = latest_before + timeframe_to_milliseconds(timeframe)
+        start_time = latest_before
+        if not refresh_latest:
+            start_time += timeframe_to_milliseconds(timeframe)
 
     if fetcher is None:
         from .market_data import fetch_live_candles

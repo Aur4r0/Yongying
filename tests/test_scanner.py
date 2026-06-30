@@ -1,4 +1,6 @@
+import tempfile
 import unittest
+from pathlib import Path
 
 from yongying.models import AnalysisResult, Candle, IndicatorSnapshot, SignalPlan
 from yongying.notifier import NotifyResult
@@ -15,6 +17,12 @@ def candles_with_closed_timestamp(timestamp: int) -> list[Candle]:
     candles[-2] = Candle(timestamp, 3.1, 3.2, 3.0, 3.15, 1200)
     candles[-1] = Candle(timestamp + 1, 3.15, 3.22, 3.12, 3.18, 1300)
     return candles
+
+
+def cached_candle(index: int) -> Candle:
+    timestamp = 1_700_000_000_000 + index * 60_000
+    price = 3.0 + index * 0.001
+    return Candle(timestamp, price, price + 0.02, price - 0.02, price + 0.01, 1000 + index)
 
 
 def active_analysis(candles: list[Candle], symbol: str, timeframe: str, source: str) -> AnalysisResult:
@@ -127,6 +135,98 @@ class ScannerTests(unittest.TestCase):
         self.assertEqual(messages, ["signal text"])
         self.assertIsNotNone(result.notify_result)
         self.assertTrue(result.notify_result.sent)
+
+    def test_scan_once_updates_live_cache_before_reading_closed_candles(self):
+        state = ScannerState()
+        calls = []
+
+        def fetcher(**kwargs):
+            calls.append(kwargs)
+            return [cached_candle(index) for index in range(61)]
+
+        observed = []
+
+        def analyzer(candles, symbol, timeframe, source):
+            observed.append(candles[-1].timestamp)
+            return active_analysis(candles, symbol, timeframe, source)
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            result = scan_once(
+                state,
+                symbol="ORDI/USDT",
+                timeframe="1m",
+                source="live",
+                exchange="binance",
+                limit=61,
+                cache_path=Path(tmpdir) / "klines.sqlite",
+                cache_fetcher=fetcher,
+                analyzer=analyzer,
+                renderer=lambda analysis: "signal",
+            )
+
+        self.assertTrue(result.emitted)
+        self.assertIsNotNone(result.cache_update)
+        self.assertEqual(result.cache_update.fetched_count, 61)
+        self.assertEqual(calls[0]["start_time"], None)
+        self.assertEqual(observed, [cached_candle(59).timestamp])
+
+    def test_scan_once_refreshes_latest_cached_kline_incrementally(self):
+        state = ScannerState()
+        calls = []
+        analyzer_calls = []
+
+        def fetcher(**kwargs):
+            calls.append(kwargs)
+            if len(calls) == 1:
+                return [cached_candle(index) for index in range(61)]
+            updated_latest = cached_candle(60)
+            return [
+                Candle(
+                    updated_latest.timestamp,
+                    updated_latest.open,
+                    updated_latest.high + 0.01,
+                    updated_latest.low,
+                    updated_latest.close + 0.005,
+                    updated_latest.volume + 100,
+                )
+            ]
+
+        def analyzer(candles, symbol, timeframe, source):
+            analyzer_calls.append(candles[-1].timestamp)
+            return active_analysis(candles, symbol, timeframe, source)
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            cache_path = Path(tmpdir) / "klines.sqlite"
+            first = scan_once(
+                state,
+                symbol="ORDI/USDT",
+                timeframe="1m",
+                source="live",
+                exchange="binance",
+                limit=61,
+                cache_path=cache_path,
+                cache_fetcher=fetcher,
+                analyzer=analyzer,
+                renderer=lambda analysis: "signal",
+            )
+            second = scan_once(
+                state,
+                symbol="ORDI/USDT",
+                timeframe="1m",
+                source="live",
+                exchange="binance",
+                limit=61,
+                cache_path=cache_path,
+                cache_fetcher=fetcher,
+                analyzer=analyzer,
+                renderer=lambda analysis: "signal",
+            )
+
+        self.assertTrue(first.emitted)
+        self.assertFalse(second.emitted)
+        self.assertEqual(second.reason, "no_new_closed_candle")
+        self.assertEqual(calls[1]["start_time"], cached_candle(60).timestamp)
+        self.assertEqual(analyzer_calls, [cached_candle(59).timestamp])
 
 
 if __name__ == "__main__":
