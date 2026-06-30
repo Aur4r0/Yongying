@@ -76,11 +76,20 @@ def fetch_live_candles(
     limit: int = 180,
     exchange_id: str | None = None,
     market: str = "futures",
+    start_time: int | None = None,
+    end_time: int | None = None,
 ) -> list[Candle]:
     """Fetch live candles through the configured exchange adapter."""
     exchange_name = (exchange_id or "binance").lower()
     if exchange_name in {"binance", "binance_futures", "binanceusdm"}:
-        return fetch_binance_klines(symbol=symbol, timeframe=timeframe, limit=limit, market=market)
+        return fetch_binance_klines(
+            symbol=symbol,
+            timeframe=timeframe,
+            limit=limit,
+            market=market,
+            start_time=start_time,
+            end_time=end_time,
+        )
     raise ValueError(f"Unsupported live exchange: {exchange_id}. Only binance is implemented.")
 
 

@@ -102,16 +102,21 @@ def build_klines_url(
     timeframe: str,
     limit: int,
     market: str = "futures",
+    start_time: int | None = None,
+    end_time: int | None = None,
 ) -> str:
     if market != "futures":
         raise UnsupportedMarketError("Only Binance U-margined futures klines are implemented")
-    params = urllib.parse.urlencode(
-        {
-            "symbol": to_binance_symbol(symbol),
-            "interval": validate_timeframe(timeframe),
-            "limit": validate_limit(limit),
-        }
-    )
+    values: dict[str, int | str] = {
+        "symbol": to_binance_symbol(symbol),
+        "interval": validate_timeframe(timeframe),
+        "limit": validate_limit(limit),
+    }
+    if start_time is not None:
+        values["startTime"] = int(start_time)
+    if end_time is not None:
+        values["endTime"] = int(end_time)
+    params = urllib.parse.urlencode(values)
     return f"{BINANCE_FUTURES_KLINES_URL}?{params}"
 
 
@@ -187,9 +192,18 @@ def fetch_binance_klines(
     limit: int = 200,
     market: str = "futures",
     timeout: float = 10.0,
+    start_time: int | None = None,
+    end_time: int | None = None,
     transport: JsonTransport | None = None,
 ) -> list[Candle]:
-    url = build_klines_url(symbol=symbol, timeframe=timeframe, limit=limit, market=market)
+    url = build_klines_url(
+        symbol=symbol,
+        timeframe=timeframe,
+        limit=limit,
+        market=market,
+        start_time=start_time,
+        end_time=end_time,
+    )
     request = transport or _request_json
     try:
         payload = request(url, timeout)

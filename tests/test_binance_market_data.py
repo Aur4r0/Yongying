@@ -44,7 +44,13 @@ class BinanceMarketDataTests(unittest.TestCase):
             to_binance_symbol("ORDI/")
 
     def test_timeframe_and_query_params(self):
-        url = build_klines_url(symbol="ORDI/USDT", timeframe="15m", limit=200)
+        url = build_klines_url(
+            symbol="ORDI/USDT",
+            timeframe="15m",
+            limit=200,
+            start_time=1700000000000,
+            end_time=1700000900000,
+        )
         parsed = urllib.parse.urlparse(url)
         params = urllib.parse.parse_qs(parsed.query)
         self.assertEqual(parsed.netloc, "fapi.binance.com")
@@ -52,6 +58,8 @@ class BinanceMarketDataTests(unittest.TestCase):
         self.assertEqual(params["symbol"], ["ORDIUSDT"])
         self.assertEqual(params["interval"], ["15m"])
         self.assertEqual(params["limit"], ["200"])
+        self.assertEqual(params["startTime"], ["1700000000000"])
+        self.assertEqual(params["endTime"], ["1700000900000"])
         with self.assertRaises(UnsupportedTimeframeError):
             build_klines_url(symbol="ORDI/USDT", timeframe="2x", limit=200)
 
@@ -120,7 +128,14 @@ class BinanceMarketDataTests(unittest.TestCase):
                 limit=200,
             )
         self.assertEqual(candles[0].close, 3.4)
-        fetcher.assert_called_once_with(symbol="ORDI/USDT", timeframe="15m", limit=200, market="futures")
+        fetcher.assert_called_once_with(
+            symbol="ORDI/USDT",
+            timeframe="15m",
+            limit=200,
+            market="futures",
+            start_time=None,
+            end_time=None,
+        )
 
     def test_demo_source_stays_offline(self):
         candles = load_candles(symbol="ORDI/USDT", timeframe="15m", source="demo", limit=10)

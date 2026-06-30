@@ -5,6 +5,7 @@
 ## 项目结构
 
 - `yongying/market_data.py`：行情来源统一入口。`demo` 必须保持离线、确定性；`live` 默认只接公开 K 线 adapter。
+- `yongying/kline_cache.py`：SQLite K 线缓存与增量更新。只存公开 OHLCV，不存 API key、账户、订单或资金数据；测试必须使用临时数据库和 mock fetcher。
 - `yongying/exchanges/binance.py`：Binance U 本位合约 K 线 REST adapter。只允许公开 `/fapi/v1/klines`，不得加入账户、下单、资金或私钥接口。
 - `yongying/indicators.py`：技术指标。核心实现不得依赖 pandas、TA-Lib 或网络。
 - `yongying/patterns.py`：K 线形态识别。只返回结构化 pattern 结果，不做交易决策。

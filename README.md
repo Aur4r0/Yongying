@@ -124,6 +124,38 @@ binance_candles = load_candles(
 `https://fapi.binance.com/fapi/v1/klines`. It does not use or store API keys,
 and it does not expose account, order, balance, or funding endpoints.
 
+### Market Data Cache
+
+Use the SQLite cache when a scanner needs repeated kline reads without
+refetching the same history every cycle:
+
+```python
+from yongying.kline_cache import KlineCache, update_cached_candles
+
+result = update_cached_candles(
+    cache_path="data/klines.sqlite",
+    exchange="binance",
+    market="futures",
+    symbol="ORDI/USDT",
+    timeframe="15m",
+    limit=200,
+)
+
+cache = KlineCache("data/klines.sqlite")
+cached_candles = cache.load_candles(
+    exchange="binance",
+    market="futures",
+    symbol="ORDI/USDT",
+    timeframe="15m",
+    limit=200,
+)
+```
+
+Rows are keyed by `exchange + market + symbol + timeframe + timestamp`, so
+duplicate candles are replaced rather than appended. `update_cached_candles`
+passes `start_time` after the latest cached timestamp to the fetcher when
+possible and returns a continuity report for gaps.
+
 ## Run Tests
 
 ```bash
@@ -142,6 +174,7 @@ yongying/
   scanner.py             Closed-candle signal scanner
   notifier.py            Optional Telegram text push
   market_data.py         Demo/live candle loading
+  kline_cache.py         SQLite kline cache and incremental update helpers
   exchanges/
     binance.py           Binance U-margined futures kline REST adapter
   indicators.py          MA, BOLL, RSI, MACD, ATR
